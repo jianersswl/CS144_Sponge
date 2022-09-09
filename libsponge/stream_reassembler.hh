@@ -19,9 +19,9 @@ typedef struct
 class StreamReassembler {
   private:
     // Your code here -- add private members as necessary.
-    uint64_t _first_unread;
+    size_t _first_unread;
     size_t _unassembled_bytes_size;
-    uint64_t _eof_index;
+    size_t _eof_index;
 
     std::list<Tuple> _unassembled_buffer; 
     ByteStream _output;  //!< The reassembled in-order byte stream
