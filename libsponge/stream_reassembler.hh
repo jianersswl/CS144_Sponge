@@ -4,11 +4,10 @@
 #include "byte_stream.hh"
 
 #include <cstdint>
-#include <string>
 #include <list>
+#include <string>
 
-typedef struct
-{
+typedef struct {
     /* data */
     std::string data;
     size_t index;
@@ -23,12 +22,11 @@ class StreamReassembler {
     size_t _unassembled_bytes_size;
     size_t _eof_index;
 
-    std::list<Tuple> _unassembled_buffer; 
+    std::list<Tuple> _unassembled_buffer;
     ByteStream _output;  //!< The reassembled in-order byte stream
     size_t _capacity;    //!< The maximum number of bytes
 
   public:
-    
     //! \brief Construct a `StreamReassembler` that will store up to `capacity` bytes.
     //! \note This capacity limits both the bytes that have been reassembled,
     //! and those that have not yet been reassembled.
