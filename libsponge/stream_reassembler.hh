@@ -53,6 +53,10 @@ class StreamReassembler {
     //!@{
     const ByteStream &stream_out() const { return _output; }
     ByteStream &stream_out() { return _output; }
+    const uint64_t &get_first_unread() const { return _first_unread; }
+    uint64_t &get_first_unread() { return _first_unread; }
+    const uint64_t &get_first_unaccept() const { return _first_unaccept; }
+    uint64_t &get_first_unaccept() { return _first_unaccept; }
     //!@}
 
     //! The number of bytes in the substrings stored but not yet reassembled

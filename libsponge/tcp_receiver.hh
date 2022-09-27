@@ -14,6 +14,9 @@
 //! the acknowledgment number and window size to advertise back to the
 //! remote TCPSender.
 class TCPReceiver {
+    bool _SYN;
+    uint64_t _ackno;
+    WrappingInt32 _isn;
     //! Our data structure for re-assembling bytes.
     StreamReassembler _reassembler;
     //! The maximum number of bytes we'll store.
@@ -24,7 +27,7 @@ class TCPReceiver {
     //!
     //! \param capacity the maximum number of bytes that the receiver will
     //!                 store in its buffers at any give time.
-    TCPReceiver(const size_t capacity) : _reassembler(capacity), _capacity(capacity) {}
+    TCPReceiver(const size_t capacity) : _SYN(false), _ackno(0), _isn(0), _reassembler(capacity), _capacity(capacity) {}
 
     //! \name Accessors to provide feedback to the remote TCPSender
     //!@{
@@ -50,7 +53,7 @@ class TCPReceiver {
     //!@}
 
     //! \brief number of bytes stored but not yet reassembled
-    size_t unassembled_bytes() const { return {}; }
+    size_t unassembled_bytes() const { return _reassembler.unassembled_bytes(); }
 
     //! \brief handle an inbound segment
     void segment_received(const TCPSegment &seg);

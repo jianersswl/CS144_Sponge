@@ -12,7 +12,7 @@ void DUMMY_CODE(Targs &&... /* unused */) {}
 
 using namespace std;
 
-ofstream fout;
+// ofstream fout;
 
 StreamReassembler::StreamReassembler(const size_t capacity) :
 _unassembled_buffer(),
@@ -198,3 +198,4 @@ void StreamReassembler::write_bytes() {
 size_t StreamReassembler::unassembled_bytes() const { return _unassembled_bytes; }
 
 bool StreamReassembler::empty() const { return _unassembled_buffer.empty(); }
+
