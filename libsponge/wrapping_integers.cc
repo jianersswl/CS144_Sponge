@@ -39,4 +39,5 @@ uint64_t unwrap(WrappingInt32 n, WrappingInt32 isn, uint64_t checkpoint) {
     uint64_t left = (checkpoint - ret) % max;
 
     return left < -left+max? checkpoint-left:checkpoint-left+max;
+    // return checkpoint-left;
 }

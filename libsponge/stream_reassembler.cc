@@ -1,5 +1,4 @@
 #include "stream_reassembler.hh"
-
 #include <fstream>
 // Dummy implementation of a stream reassembler.
 
@@ -15,154 +14,187 @@ using namespace std;
 
 ofstream fout;
 
-StreamReassembler::StreamReassembler(const size_t capacity)
-    : _first_unread(0)
-    , _unassembled_bytes_size(0)
-    , _eof_index(-1)
-    , _unassembled_buffer()
-    , _output(capacity)
-    , _capacity(capacity) {}
+StreamReassembler::StreamReassembler(const size_t capacity) :
+_unassembled_buffer(),
+_is_eof(false),
+_eof_index(0),
+_first_unread(0),
+_first_unaccept(capacity),
+_unassembled_bytes(0),
+_output(capacity), 
+_capacity(capacity) {}
 
 //! \details This function accepts a substring (aka a segment) of bytes,
 //! possibly out-of-order, from the logical stream, and assembles any newly
 //! contiguous substrings and writes them into the output stream in order.
 void StreamReassembler::push_substring(const string &data, const size_t index, const bool eof) {
-    // 无视已经写进bytestream里的内容
-    if (data.length() > 0 && index + data.length() - 1 < _first_unread) {
-        return;
-    }
-    if (eof == true) {
-        if (data.length() > 0) {
-            _eof_index = index + data.length() - 1;
-        } else {
+    _first_unaccept = _first_unread + (_capacity - _output.buffer_size());
+    if(eof){
+        _is_eof = true;
+        if(data.length()==0){
             _eof_index = index;
+        }else{
+            _eof_index = index + data.length()-1;
         }
     }
 
-    Tuple bag = {data, index};
+    // fout.open("test.log", ios::app);
+    // fout << "*********************push_substring**********************" << endl;
+    // fout << "substring: " << data << endl;
+    // fout << "_first_unread: " << _first_unread << endl;
+    // fout << "_first_unaccept: " << _first_unaccept << endl;
+    // fout.close();
 
-    if (_unassembled_bytes_size == 0) {
-        _unassembled_buffer.push_front(bag);
-        _unassembled_bytes_size += data.length();
-    } else {
-        merge_overlap(bag);
+    Tuple node = {data, index, max(index+1, index + data.length())};
+    if(check_overflow(node)){
+        // _unassembled_buffer.push_front(node);
+
+        // fout.open("test.log", ios::app);
+        // fout << "befor_merge: ";
+        // for(list<Tuple>::iterator it = _unassembled_buffer.begin(); it!=_unassembled_buffer.end(); ++it){
+            // fout << it->data;
+        // }
+        // fout << endl;
+        // fout.close();
+
+        // merge list
+        merge(node);
+
+        // fout.open("test.log", ios::app);
+        // fout << "after_merge: ";
+        // for(list<Tuple>::iterator it = _unassembled_buffer.begin(); it!=_unassembled_buffer.end(); ++it){
+        //     fout << it->data;
+        // }
+        // fout << endl;
+        // fout.close();
+
+        //write bytes into Bytestream
+        write_bytes();
+
+        // fout.open("test.log", ios::app);
+        // fout << "after_write: ";
+        // for(list<Tuple>::iterator it = _unassembled_buffer.begin(); it!=_unassembled_buffer.end(); ++it){
+        //     fout << it->data;
+        // }
+        // fout << endl;
+        // fout.close();
+
     }
-    check_overflow();
-    write_bytes();
+    // fout.open("test.log", ios::app);
+    // fout << "*********************************************************" << endl;
+    // fout.close();
 }
 
-void StreamReassembler::check_overflow() {
-    // 消除已经write的字节
-    auto head = _unassembled_buffer.begin();
-    // 空字节打头 跳过
-    if ((head->data).length() == 0) {
-        return;
-    }
-
-    if (head->index < _first_unread) {
-        head->data =
-            (head->data).substr(_first_unread - head->index, (head->data).length() - (_first_unread - head->index));
-        _unassembled_bytes_size -= (_first_unread - head->index);
-        head->index = _first_unread;
-    }
-
-    // 消除overflow的尾字节
-    // buffer的大小以index为基准还是以实际节点数为基准？
-    while (_unassembled_bytes_size + _output.buffer_size() > _capacity) {
-        auto tail = _unassembled_buffer.rbegin();
-        if (_unassembled_bytes_size + _output.buffer_size() - (tail->data).length() >= _capacity) {
-            _unassembled_bytes_size -= (tail->data).length();
-            _unassembled_buffer.pop_back();
-        } else {
-            size_t drop = _unassembled_bytes_size + _output.buffer_size() - _capacity;
-            tail->data = (tail->data).substr(0, (tail->data).length() - drop);
-            _unassembled_bytes_size -= drop;
+// 检查头尾是否符合merge的条件
+bool StreamReassembler::check_overflow(Tuple &node) {
+    if(node.end_index <= _first_unread || node.start_index >= _first_unaccept){
+        return false;
+    }else{
+        if(node.start_index < _first_unread){
+            node.data = node.data.substr(_first_unread - node.start_index, node.end_index - _first_unread);
+            node.start_index = _first_unread;
+        }
+        if(node.end_index > _first_unaccept){
+            node.data = node.data.substr(0, _first_unaccept - node.start_index);
+            node.end_index = _first_unaccept;
         }
     }
-    string ss1;
-    for (list<Tuple>::iterator it = _unassembled_buffer.begin(); it != _unassembled_buffer.end(); it++) {
-        ss1 += it->data;
-    }
+    return true;
 }
 
-void StreamReassembler::write_bytes() {
-    // 考虑到只有列表头才有机会被写到bytestream里面
-    list<Tuple>::iterator it = _unassembled_buffer.begin();
-    if (_first_unread >= it->index) {
-        _output.write(it->data);
+// merge buffer 保证string队列正确性
+void StreamReassembler::merge(Tuple &node) { 
+    
+    // 先摘下来
+    // Tuple node = _unassembled_buffer.front();
+    // _unassembled_buffer.pop_front();
 
-        if ((it->data).length() == 0) {
-            if (it->index == _eof_index) {
-                stream_out().end_input();
-            }
-            return;
-        } else {
-            if ((it->index + (it->data).length() - 1) == _eof_index) {
-                stream_out().end_input();
-            }
-        }
+    // fout.open("test.log", ios::app);
+    // fout << "!!!!!!!!!!!!!!!!!!!!!!!!!!merge!!!!!!!!!!!!!!!!!!!!!!!!!!" << endl;
+    // fout << "head: " << node.data << endl;
 
-        _unassembled_bytes_size -= (it->data).length();
-        _first_unread = it->index + (it->data).length();
-        _unassembled_buffer.erase(it);
-    }
-}
-void StreamReassembler::merge_overlap(Tuple newRecieve) {
-    list<Tuple>::iterator it = _unassembled_buffer.begin();
-
-    // 找到第一个有可能产生merge的节点
-    for (; it != _unassembled_buffer.end(); ++it) {
-        if (it->index + (it->data).length() - 1 >= newRecieve.index) {
+    // 找到第一个可能有交叉的节点
+    list<Tuple>::iterator first_cross = _unassembled_buffer.begin();
+    for(; first_cross!=_unassembled_buffer.end(); ++first_cross){
+        if(first_cross->end_index >= node.start_index){
             break;
         }
     }
 
-    // 没有merge，直接插到队尾
-    if (it == _unassembled_buffer.end()) {
-        _unassembled_buffer.emplace_back(newRecieve);
-        _unassembled_bytes_size += newRecieve.data.length();
-    } else {
-        // 插入后向后merge
-        it = _unassembled_buffer.insert(it, newRecieve);
-        list<Tuple>::iterator pre = it;
-        it++;
-        _unassembled_bytes_size = _unassembled_bytes_size + (pre->data).length();
-        for (; it != _unassembled_buffer.end(); ++it) {
-            size_t pre_start = pre->index;
-            size_t pre_end = pre_start + (pre->data).length() - 1;
-            size_t it_start = it->index;
-            size_t it_end = it_start + (it->data).length() - 1;
-
-            // 已经不能再merge
-            if (pre_end + 1 < it_start) {
+    // 空字符算1bytes吗?
+    _unassembled_bytes += node.data.length();
+    // 没有交叉点直接插入队尾
+    if(first_cross == _unassembled_buffer.end()){
+        // fout << "insert into th end" << endl;
+        _unassembled_buffer.push_back(node);
+    }else{
+        list<Tuple>::iterator pre = _unassembled_buffer.insert(first_cross, node);
+        list<Tuple>::iterator next = first_cross;
+        // fout << "pre: " << pre->data << " " << pre->start_index << " " << pre->end_index << endl;
+        // fout << "next: " << next->data << " " << next->start_index << " " << next->end_index << endl;
+        while(next!=_unassembled_buffer.end()){
+            // next已经不可merge
+            if(pre->end_index < next->start_index) {
                 break;
             }
-            // pre 包含 it
-            if (pre_start <= it_start && pre_end >= it_end) {
-                _unassembled_bytes_size = _unassembled_bytes_size - (it->data).length();
-                it->data = pre->data;
-                it->index = pre->index;
-                // it 包含 pre
-            } else if (pre_start >= it_start && pre_end <= it_end) {
-                _unassembled_bytes_size = _unassembled_bytes_size - (pre->data).length();
-                // pre尾与it头相交
-            } else if (pre_start <= it_start) {
-                it->data = (pre->data).substr(0, it_start - pre_start) + it->data;
-                it->index = pre_start;
-                _unassembled_bytes_size = _unassembled_bytes_size - (pre_end - it_start + 1);
+            // next contains pre
+            if(next->start_index <= pre->start_index && next->end_index >= pre->end_index){
+                // fout << "next contains pre" << endl;
+                _unassembled_bytes -= pre->data.length();
+            } 
+            // pre contains next 
+            else if(pre->start_index <= next->start_index && pre->end_index >= next->end_index){
+                // fout << "pre contains next" << endl;
 
-                // pre头和it尾相交
-            } else if (pre_start >= it_start) {
-                it->data = (it->data).substr(0, pre_start - it_start) + pre->data;
-                _unassembled_bytes_size = _unassembled_bytes_size - (it_end - pre_start + 1);
+                _unassembled_bytes -= next->data.length();
+                next->data = pre->data;
+                next->start_index = pre->start_index;
+                next->end_index = pre->end_index;
+
             }
+            // pre at left
+            else if(pre->start_index < next->start_index){
+                // fout << "pre at left" << endl;
+                
+                _unassembled_bytes -= (pre->end_index - next->start_index);
+                next->data = pre->data + (next->data).substr(pre->end_index - next->start_index, next->end_index - pre->end_index);
+                next->start_index = pre->start_index;
+            }
+            // next at left
+            else if(next->start_index < pre->start_index){
+                // fout << "next at left" << endl;
 
-            // 删除pre节点
-            pre = _unassembled_buffer.erase(pre);
+                _unassembled_bytes -= (next->end_index - pre->start_index);
+                next->data = next->data + (pre->data).substr(next->end_index - pre->start_index, pre->end_index - next->end_index);
+                next->end_index = pre->end_index;
+            }
+            _unassembled_buffer.erase(pre);
+            pre = next;
+            next++;
+        }
+    }
+    // fout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << endl;
+    // fout.close();
+}
+
+// 写入Bytestream
+void StreamReassembler::write_bytes() {
+    // 先摘下来
+    Tuple node = _unassembled_buffer.front();
+
+    if(node.start_index == _first_unread){
+        _unassembled_buffer.pop_front();
+
+        _output.write(node.data);
+        _first_unread = node.end_index;
+        _unassembled_bytes -= node.data.length();
+
+        if(_is_eof == true && node.end_index-1 == _eof_index){
+            _output.end_input();
         }
     }
 }
 
-size_t StreamReassembler::unassembled_bytes() const { return _unassembled_bytes_size; }
+size_t StreamReassembler::unassembled_bytes() const { return _unassembled_bytes; }
 
-bool StreamReassembler::empty() const { return _unassembled_bytes_size == 0; }
+bool StreamReassembler::empty() const { return _unassembled_buffer.empty(); }

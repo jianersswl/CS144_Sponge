@@ -16,6 +16,8 @@
 class TCPReceiver {
     //! Our data structure for re-assembling bytes.
     StreamReassembler _reassembler;
+    WrappingInt32 _isn;
+    bool _syn;
     //! The maximum number of bytes we'll store.
     size_t _capacity;
 
@@ -24,7 +26,7 @@ class TCPReceiver {
     //!
     //! \param capacity the maximum number of bytes that the receiver will
     //!                 store in its buffers at any give time.
-    TCPReceiver(const size_t capacity) : _reassembler(capacity), _capacity(capacity) {}
+    TCPReceiver(const size_t capacity) : _reassembler(capacity), _isn(0), _syn(false), _capacity(capacity) {}
 
     //! \name Accessors to provide feedback to the remote TCPSender
     //!@{
@@ -50,7 +52,7 @@ class TCPReceiver {
     //!@}
 
     //! \brief number of bytes stored but not yet reassembled
-    size_t unassembled_bytes() const { return {}; }
+    size_t unassembled_bytes() const { return _reassembler.unassembled_bytes(); }
 
     //! \brief handle an inbound segment
     void segment_received(const TCPSegment &seg);
@@ -60,6 +62,9 @@ class TCPReceiver {
     ByteStream &stream_out() { return _reassembler.stream_out(); }
     const ByteStream &stream_out() const { return _reassembler.stream_out(); }
     //!@}
+    void set_isn(WrappingInt32 isn) {
+      _isn = WrappingInt32(isn.raw_value());
+    }
 };
 
 #endif  // SPONGE_LIBSPONGE_TCP_RECEIVER_HH
